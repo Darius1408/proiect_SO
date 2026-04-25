@@ -7,17 +7,18 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-// Structura actualizata conform cerintelor
+// Structura
 typedef struct Report{
     int id;
     char inspector[32];
-    float latitude;       // Adaugat
-    float longitude;      // Adaugat
+    float latitude;
+    float longitude;
     char category[32];
     int severity;
     time_t timestamp;
     char description[256];
 } Report;
+
 
 // Functie helper pentru a transforma st_mode in string "rw-rw-r--"
 void permissions_to_string(mode_t mode, char *str) {
@@ -33,6 +34,7 @@ void permissions_to_string(mode_t mode, char *str) {
     if (mode & S_IXOTH) str[8] = 'x';
 }
 
+
 // Functie pentru crearea districtului daca nu exista
 void setup_district(const char* district) {
     struct stat st = {0};
@@ -41,14 +43,15 @@ void setup_district(const char* district) {
     }
 }
 
+
 // --- FUNCTII GENERATE DE AI PENTRU FILTER ---
 int parse_condition(const char *input, char *field, char *op, char *value) {
-    // Extrage field, operator si value din sirul "field:operator:value"
     if (sscanf(input, "%[^:]:%[^:]:%s", field, op, value) == 3) {
         return 1;
     }
     return 0;
 }
+
 
 int match_condition(Report *r, const char *field, const char *op, const char *value) {
     // Compara severity (int)
@@ -74,7 +77,8 @@ int match_condition(Report *r, const char *field, const char *op, const char *va
     return 0;
 }
 
-// --- FUNCTIA DE LOGARE ---
+
+// Functia de logare
 void log_action(const char* district, const char* role, const char* user, const char* action) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/logged_district", district);
@@ -83,10 +87,9 @@ void log_action(const char* district, const char* role, const char* user, const 
     struct stat st;
     if (stat(filepath, &st) == 0) {
         if (strcmp(role, "inspector") == 0) {
-            // Inspectorii sunt grupul, verificam bitul de scriere grup S_IWGRP
             if (!(st.st_mode & S_IWGRP)) {
                 printf("[ERROR] Rolul 'inspector' nu are permisiunea de a scrie in %s!\n", filepath);
-                return; // Refuza scrierea
+                return; 
             }
         }
     }
@@ -101,18 +104,17 @@ void log_action(const char* district, const char* role, const char* user, const 
     }
 }
 
-// --- FUNCTIA DE ADAUGARE ---
+
+// Functia de adaugare
 void add_report(const char* role, const char* user, const char* district) {
     setup_district(district);
     
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
 
-    // Deschidem fisierul. Daca nu exista, il cream cu 0664
     int fd = open(filepath, O_WRONLY | O_CREAT | O_APPEND, 0664);
     if (fd < 0) { perror("Eroare deschidere fisier"); return; }
     
-    // Fortam permisiunile exact cum cere enuntul dupa creare
     chmod(filepath, 0664);
 
     Report r;
@@ -121,30 +123,30 @@ void add_report(const char* role, const char* user, const char* district) {
     r.timestamp = time(NULL);
     strncpy(r.inspector, user, 31);
     
-    // Pentru faza 1, citim datele de la tastatura simulat ca in screenshot
+    // Pentru faza 1, citim datele de la tastatura
     printf("X (lat): "); scanf("%f", &r.latitude);
     printf("Y (lon): "); scanf("%f", &r.longitude);
     printf("Category (road/lighting/flooding/other): "); scanf("%31s", r.category);
     printf("Severity level (1/2/3): "); scanf("%d", &r.severity);
-    getchar(); // consumam newline
+    getchar();
     printf("Description: ");
     fgets(r.description, 255, stdin);
-    r.description[strcspn(r.description, "\n")] = 0; // stergem newline-ul
+    r.description[strcspn(r.description, "\n")] = 0;
 
     write(fd, &r, sizeof(Report));
     close(fd);
     
-    // Cream simlink-ul cerut activ
     char symlink_name[256];
     snprintf(symlink_name, sizeof(symlink_name), "active_reports-%s", district);
-    symlink(filepath, symlink_name); // Ignoram eroarea daca exista deja
+    symlink(filepath, symlink_name); 
 
     log_action(district, role, user, "add");
 
     printf("[SUCCESS] Raport adaugat in %s!\n", filepath);
 }
 
-// --- FUNCTIA DE LISTARE ---
+
+//Functia de listare
 void list_reports(const char* role, const char* user, const char* district) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
@@ -155,7 +157,6 @@ void list_reports(const char* role, const char* user, const char* district) {
         return;
     }
 
-    // Afisam permisiunile manual, conform cerintei
     char perms[10];
     permissions_to_string(file_stat.st_mode, perms);
     printf("Raport file: %s, Size: %lld bytes, Permissions: %s\n", filepath, file_stat.st_size, perms);
@@ -174,7 +175,8 @@ void list_reports(const char* role, const char* user, const char* district) {
     close(fd);
 }
 
-// --- FUNCTIA DE STERGERE (Rescrisa corect cu lseek si ftruncate) ---
+
+// Functia de stergere
 void delete_report(const char* role, const char* district, int target_id) {
     if (strcmp(role, "manager") != 0) {
         printf("[ERROR] Doar rolul de manager poate sterge rapoarte.\n");
@@ -195,7 +197,7 @@ void delete_report(const char* role, const char* district, int target_id) {
     int found = 0;
     off_t target_pos = -1;
 
-    // 1. Cautam inregistrarea
+    //Cautam inregistrarea
     while (read(fd, &r, sizeof(Report)) > 0) {
         if (r.id == target_id) {
             found = 1;
@@ -211,14 +213,14 @@ void delete_report(const char* role, const char* district, int target_id) {
         return;
     }
 
-    // 2. Shiftam restul fisierului peste inregistrarea stearsa
+    //Shiftam restul fisierului peste inregistrarea stearsa
     off_t read_pos = target_pos + sizeof(Report);
     off_t write_pos = target_pos;
 
     while (1) {
         lseek(fd, read_pos, SEEK_SET);
         int bytes_read = read(fd, &r, sizeof(Report));
-        if (bytes_read <= 0) break; // Am ajuns la final
+        if (bytes_read <= 0) break;
 
         lseek(fd, write_pos, SEEK_SET);
         write(fd, &r, sizeof(Report));
@@ -227,7 +229,7 @@ void delete_report(const char* role, const char* district, int target_id) {
         write_pos += sizeof(Report);
     }
 
-    // 3. Trunchiem fisierul pentru a taia spatiul mort de la final
+    //Trunchiem fisierul pentru a taia spatiul de la final
     ftruncate(fd, write_pos);
     close(fd);
 
@@ -237,7 +239,7 @@ void delete_report(const char* role, const char* district, int target_id) {
 }
 
 
-// --- FUNCTIA DE UPDATE THRESHOLD ---
+// Functiade update threshold
 void update_threshold(const char* role, const char* district, int value) {
     if (strcmp(role, "manager") != 0) {
         printf("[ERROR] Doar rolul de manager poate modifica district.cfg.\n");
@@ -248,7 +250,6 @@ void update_threshold(const char* role, const char* district, int value) {
     snprintf(filepath, sizeof(filepath), "%s/district.cfg", district);
 
     struct stat st;
-    // Daca fisierul exista, verificam bitii 640 conform cerintei
     if (stat(filepath, &st) == 0) {
         if ((st.st_mode & 0777) != 0640) {
             printf("[ERROR] Permisiunile fisierului district.cfg nu sunt 640. Operatiune refuzata.\n");
@@ -258,7 +259,7 @@ void update_threshold(const char* role, const char* district, int value) {
 
     int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0640);
     if (fd >= 0) {
-        chmod(filepath, 0640); // Asiguram 640 (rw-r-----)
+        chmod(filepath, 0640);
         char buffer[64];
         snprintf(buffer, sizeof(buffer), "severity_threshold=%d\n", value);
         write(fd, buffer, strlen(buffer));
@@ -269,7 +270,8 @@ void update_threshold(const char* role, const char* district, int value) {
     }
 }
 
-// --- FUNCTIA DE FILTRARE ---
+
+//Functiade filtrare
 void filter_reports(const char* district, int condition_count, char* conditions[]) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
@@ -288,7 +290,6 @@ void filter_reports(const char* district, int condition_count, char* conditions[
 
     while (read(fd, &r, sizeof(Report)) > 0) {
         int matches_all = 1;
-        // Verificam toate conditiile (AND logic)
         for (int i = 0; i < condition_count; i++) {
             char field[32], op[8], value[64];
             if (parse_condition(conditions[i], field, op, value)) {
@@ -311,7 +312,6 @@ void filter_reports(const char* district, int condition_count, char* conditions[
 }
 
 
-// --- PROGRAMUL PRINCIPAL ---
 int main(int argc, char *argv[]) {
     if (argc < 4) {
         printf("Usage: %s --role <manager|inspector> --user <nume> <comanda> [args]\n", argv[0]);
@@ -343,7 +343,6 @@ int main(int argc, char *argv[]) {
                 break;
             }
             else if (strcmp(argv[i], "--filter") == 0 && i + 2 < argc) {
-                // argv[i+1] este districtul, de la i+2 incolo sunt conditiile
                 int condition_count = argc - (i + 2);
                 filter_reports(argv[i+1], condition_count, &argv[i+2]);
                 break;
