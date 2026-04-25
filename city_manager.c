@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 
 // Structura actualizata conform cerintelor
-typedef struct {
+typedef struct Report{
     int id;
     char inspector[32];
     float latitude;       // Adaugat
@@ -158,7 +158,7 @@ void list_reports(const char* role, const char* user, const char* district) {
     // Afisam permisiunile manual, conform cerintei
     char perms[10];
     permissions_to_string(file_stat.st_mode, perms);
-    printf("Raport file: %s, Size: %ld bytes, Permissions: %s\n", filepath, file_stat.st_size, perms);
+    printf("Raport file: %s, Size: %lld bytes, Permissions: %s\n", filepath, file_stat.st_size, perms);
 
     int fd = open(filepath, O_RDONLY);
     if (fd < 0) return;
