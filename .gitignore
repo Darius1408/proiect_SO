@@ -1,0 +1,13 @@
+# Ignora executabilul compilat
+city_manager
+
+# Ignora fisierele generate in directoarele districtelor
+*.dat
+*.cfg
+logged_district
+
+# Ignora link-urile simbolice create de program
+active_reports-*
+
+# Ignora eventualele fisiere obiect de la compilare (good practice)
+*.o
