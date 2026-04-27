@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 // Structura
 typedef struct Report{
@@ -271,7 +272,7 @@ void update_threshold(const char* role, const char* district, int value) {
 }
 
 
-//Functiade filtrare
+//Functia de filtrare
 void filter_reports(const char* district, int condition_count, char* conditions[]) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
@@ -312,6 +313,46 @@ void filter_reports(const char* district, int condition_count, char* conditions[
 }
 
 
+//Functia de stergere a unui district
+void remove_district(const char* role, const char* district) {
+    if (strcmp(role, "manager") != 0) {
+        printf("[ERROR] Doar rolul de manager poate sterge un district.\n");
+        return;
+    }
+
+    char symlink_name[256];
+    snprintf(symlink_name, sizeof(symlink_name), "active_reports-%s", district);
+    if (unlink(symlink_name) == 0) {
+        printf("Link-ul simbolic %s a fost sters.\n", symlink_name);
+    } else {
+        perror("Eroare la stergerea link-ului simbolic");
+    }
+
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        perror("Eroare la fork");
+        return;
+    }
+
+    if (pid == 0) { 
+        printf("Se executa rm -rf pentru %s...\n", district);
+        execlp("rm", "rm", "-rf", district, NULL);
+        
+        perror("Eroare la execlp");
+        exit(1);
+    } else {
+        int status;
+        wait(&status);
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            printf("Districtul %s a fost sters cu succes.\n", district);
+        } else {
+            printf("Procesul de stergere a esuat.\n");
+        }
+    }
+}
+
+
 int main(int argc, char *argv[]) {
     if (argc < 4) {
         printf("Usage: %s --role <manager|inspector> --user <nume> <comanda> [args]\n", argv[0]);
@@ -345,6 +386,10 @@ int main(int argc, char *argv[]) {
             else if (strcmp(argv[i], "--filter") == 0 && i + 2 < argc) {
                 int condition_count = argc - (i + 2);
                 filter_reports(argv[i+1], condition_count, &argv[i+2]);
+                break;
+            }
+            else if (strcmp(argv[i], "--remove_district") == 0 && i + 1 < argc) {
+                remove_district(role, argv[i+1]);
                 break;
             }
         }
