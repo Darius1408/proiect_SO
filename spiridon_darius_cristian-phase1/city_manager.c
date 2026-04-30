@@ -6,8 +6,6 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
-#include <signal.h>
 
 // Structura
 typedef struct Report{
@@ -108,7 +106,6 @@ void log_action(const char* district, const char* role, const char* user, const 
 
 
 // Functia de adaugare
-// Functia de adaugare (ACTUALIZATA PENTRU FAZA 2)
 void add_report(const char* role, const char* user, const char* district) {
     setup_district(district);
     
@@ -143,37 +140,9 @@ void add_report(const char* role, const char* user, const char* district) {
     snprintf(symlink_name, sizeof(symlink_name), "active_reports-%s", district);
     symlink(filepath, symlink_name); 
 
-    // --- COD NOU PENTRU FAZA 2: NOTIFICAREA MONITORULUI ---
-    
-    // 1. Logam actiunea de baza (adaugarea raportului)
     log_action(district, role, user, "add");
+
     printf("[SUCCESS] Raport adaugat in %s!\n", filepath);
-
-    // 2. Incercam sa citim PID-ul monitorului
-    int pid_fd = open(".monitor_pid", O_RDONLY);
-    int monitor_notified = 0;
-
-    if (pid_fd >= 0) {
-        char pid_buf[32] = {0};
-        if (read(pid_fd, pid_buf, sizeof(pid_buf) - 1) > 0) {
-            pid_t monitor_pid = atoi(pid_buf);
-            
-            // 3. Trimitem semnalul SIGUSR1
-            if (kill(monitor_pid, SIGUSR1) == 0) {
-                monitor_notified = 1; // Succes!
-            }
-        }
-        close(pid_fd);
-    }
-
-    // 4. Logam rezultatul notificarii (Cerinta obligatorie)
-    if (monitor_notified) {
-        log_action(district, "SYSTEM", "monitor_notified", "SUCCESS");
-        printf("[INFO] Monitorul a fost notificat cu succes.\n");
-    } else {
-        log_action(district, "SYSTEM", "monitor_notified", "FAILED_OR_OFFLINE");
-        printf("[WARNING] Monitorul nu a putut fi notificat (este oprit sau PID invalid).\n");
-    }
 }
 
 
@@ -302,7 +271,7 @@ void update_threshold(const char* role, const char* district, int value) {
 }
 
 
-//Functia de filtrare
+//Functiade filtrare
 void filter_reports(const char* district, int condition_count, char* conditions[]) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
@@ -343,46 +312,6 @@ void filter_reports(const char* district, int condition_count, char* conditions[
 }
 
 
-//Functia de stergere a unui district
-void remove_district(const char* role, const char* district) {
-    if (strcmp(role, "manager") != 0) {
-        printf("[ERROR] Doar rolul de manager poate sterge un district.\n");
-        return;
-    }
-
-    char symlink_name[256];
-    snprintf(symlink_name, sizeof(symlink_name), "active_reports-%s", district);
-    if (unlink(symlink_name) == 0) {
-        printf("Link-ul simbolic %s a fost sters.\n", symlink_name);
-    } else {
-        perror("Eroare la stergerea link-ului simbolic");
-    }
-
-    pid_t pid = fork();
-
-    if (pid < 0) {
-        perror("Eroare la fork");
-        return;
-    }
-
-    if (pid == 0) { 
-        printf("Se executa rm -rf pentru %s...\n", district);
-        execlp("rm", "rm", "-rf", district, NULL);
-        
-        perror("Eroare la execlp");
-        exit(1);
-    } else {
-        int status;
-        wait(&status);
-        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-            printf("Districtul %s a fost sters cu succes.\n", district);
-        } else {
-            printf("Procesul de stergere a esuat.\n");
-        }
-    }
-}
-
-
 int main(int argc, char *argv[]) {
     if (argc < 4) {
         printf("Usage: %s --role <manager|inspector> --user <nume> <comanda> [args]\n", argv[0]);
@@ -416,10 +345,6 @@ int main(int argc, char *argv[]) {
             else if (strcmp(argv[i], "--filter") == 0 && i + 2 < argc) {
                 int condition_count = argc - (i + 2);
                 filter_reports(argv[i+1], condition_count, &argv[i+2]);
-                break;
-            }
-            else if (strcmp(argv[i], "--remove_district") == 0 && i + 1 < argc) {
-                remove_district(role, argv[i+1]);
                 break;
             }
         }
