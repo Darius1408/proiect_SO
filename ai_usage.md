@@ -1,7 +1,7 @@
 # Utilizare AI - Proiect OS Faza 1
 
 **Instrument folosit:** ChatGPT / Gemini
-**Data:** 25 Aprilie 2026
+**Data:** 4 Mai 2026
 
 ## 1. Generarea funcției parse_condition
 **Prompt:** "Am o structură de înregistrare în C pentru un proiect. Te rog să îmi generezi o funcție `int parse_condition(const char *input, char *field, char *op, char *value);` care primește un string de forma `field:operator:value` și îl împarte în cele 3 componente."

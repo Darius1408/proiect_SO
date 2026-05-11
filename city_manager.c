@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <dirent.h>
 
 // Structura
 typedef struct Report{
@@ -108,7 +109,6 @@ void log_action(const char* district, const char* role, const char* user, const 
 
 
 // Functia de adaugare
-// Functia de adaugare (ACTUALIZATA PENTRU FAZA 2)
 void add_report(const char* role, const char* user, const char* district) {
     setup_district(district);
     
@@ -143,7 +143,6 @@ void add_report(const char* role, const char* user, const char* district) {
     snprintf(symlink_name, sizeof(symlink_name), "active_reports-%s", district);
     symlink(filepath, symlink_name); 
 
-    // --- COD NOU PENTRU FAZA 2: NOTIFICAREA MONITORULUI ---
     
     // 1. Logam actiunea de baza (adaugarea raportului)
     log_action(district, role, user, "add");
@@ -204,6 +203,48 @@ void list_reports(const char* role, const char* user, const char* district) {
                r.id, r.inspector, r.category, r.severity, r.description);
     }
     close(fd);
+}
+
+
+// Functia de vizualizare a unui singur raport
+void view_report(const char* district, int target_id) {
+    char filepath[256];
+    snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
+
+    int fd = open(filepath, O_RDONLY);
+    if (fd < 0) {
+        printf("[INFO] Nu exista rapoarte pentru %s.\n", district);
+        return;
+    }
+
+    Report r;
+    int found = 0;
+    while (read(fd, &r, sizeof(Report)) > 0) {
+        if (r.id == target_id) {
+            printf("\n--- DETALII RAPORT %d ---\n", r.id);
+            printf("Inspector: %s\n", r.inspector);
+            printf("Coordonate: %f (lat), %f (lon)\n", r.latitude, r.longitude);
+            printf("Categorie: %s\n", r.category);
+            printf("Severitate: %d\n", r.severity);
+            
+            // Formatam timpul
+            struct tm *tm_info = localtime(&r.timestamp);
+            char time_buf[64];
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
+            printf("Data si ora: %s\n", time_buf);
+            
+            printf("Descriere: %s\n", r.description);
+            printf("--------------------------\n");
+            
+            found = 1;
+            break;
+        }
+    }
+    close(fd);
+
+    if (!found) {
+        printf("[ERROR] Raportul cu ID-ul %d nu a fost gasit in %s.\n", target_id, district);
+    }
 }
 
 
@@ -383,11 +424,39 @@ void remove_district(const char* role, const char* district) {
 }
 
 
+// Functie pentru detectarea dangling links folosind lstat()
+void check_dangling_symlinks() {
+    DIR *d = opendir("."); // Deschidem folderul curent
+    struct dirent *dir;
+    
+    if (d) {
+        while ((dir = readdir(d)) != NULL) {
+            // Cautam fisierele care incep cu "active_reports-"
+            if (strncmp(dir->d_name, "active_reports-", 15) == 0) {
+                struct stat lst, st;
+                
+                // Folosim lstat pentru a vedea fisierul in sine (link-ul)
+                if (lstat(dir->d_name, &lst) == 0 && S_ISLNK(lst.st_mode)) {
+                    
+                    // Folosim stat pentru a vedea daca fisierul la care pointeaza mai exista
+                    if (stat(dir->d_name, &st) == -1) {
+                        printf("[WARNING] Link-ul simbolic '%s' este invalid (dangling link)!\n", dir->d_name);
+                    }
+                }
+            }
+        }
+        closedir(d);
+    }
+}
+
+
 int main(int argc, char *argv[]) {
     if (argc < 4) {
         printf("Usage: %s --role <manager|inspector> --user <nume> <comanda> [args]\n", argv[0]);
         return 1;
     }
+
+    check_dangling_symlinks();
 
     char *role = NULL, *user = NULL;
     for (int i = 1; i < argc; i++) {
@@ -420,6 +489,10 @@ int main(int argc, char *argv[]) {
             }
             else if (strcmp(argv[i], "--remove_district") == 0 && i + 1 < argc) {
                 remove_district(role, argv[i+1]);
+                break;
+            }
+            else if (strcmp(argv[i], "--view") == 0 && i + 2 < argc) {
+                view_report(argv[i+1], atoi(argv[i+2]));
                 break;
             }
         }

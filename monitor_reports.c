@@ -54,8 +54,6 @@ int main() {
     while (keep_running) {
         pause();
     }
-
-    
     if (unlink(".monitor_pid") == 0) {
         printf("[MONITOR] Fisierul .monitor_pid a fost sters curat. La revedere!\n");
     } else {
