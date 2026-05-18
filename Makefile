@@ -1,31 +1,20 @@
-# Instructiuni de Compilare si Rulare - Proiect OS Faza 2
-Student: Spiridon Darius Cristian
+CC = gcc
+CFLAGS = -Wall -Wextra -g
 
-## 1. COMPILARE
-Pentru a compila ambele programe, puteti folosi Makefile-ul inclus ruland comanda:
-    make
+all: city_manager monitor scorer city_hub
 
-Alternativ, compilarea manuala cu gcc se face astfel:
-    gcc -Wall -o p city_manager.c
-    gcc -Wall -o monitor monitor_reports.c
+city_manager: city_manager.c
+	$(CC) $(CFLAGS) -o city_manager city_manager.c
 
-## 2. RULARE
-Pasul 1: Porniti monitorul in background (sau intr-un terminal separat) pentru a intercepta semnalele:
-    ./monitor
+monitor: monitor_reports.c
+	$(CC) $(CFLAGS) -o monitor monitor_reports.c
 
-Pasul 2: Folositi programul principal (city_manager) dintr-un alt terminal. 
-Exemple de comenzi functionale:
+scorer: scorer.c
+	$(CC) $(CFLAGS) -o scorer scorer.c
 
-- Pentru a adauga un raport (si a notifica automat monitorul):
-    ./p --role inspector --user Alex --add centru
-    
-- Pentru a lista rapoartele dintr-un district:
-    ./p --role inspector --user Alex --list centru
-    
-- Pentru a vedea un raport specific:
-    ./p --role inspector --user Alex --view centru <id_raport>
-    
-- Pentru a sterge un district (manager only):
-    ./p --role manager --user Alex --remove_district centru
+city_hub: city_hub.c
+	$(CC) $(CFLAGS) -o city_hub city_hub.c
 
-Pasul 3: Pentru a opri monitorul curat, apasati Ctrl+C in terminalul in care ruleaza. Acesta va sterge automat fisierul ascuns .monitor_pid.
+clean:
+	rm -f city_manager monitor scorer city_hub .monitor_pid
+	rm -rf active_reports-*

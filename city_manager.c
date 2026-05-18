@@ -9,8 +9,8 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <dirent.h>
+#include <errno.h>
 
-// Structura
 typedef struct Report{
     int id;
     char inspector[32];
@@ -57,7 +57,6 @@ int parse_condition(const char *input, char *field, char *op, char *value) {
 
 
 int match_condition(Report *r, const char *field, const char *op, const char *value) {
-    // Compara severity (int)
     if (strcmp(field, "severity") == 0) {
         int val = atoi(value);
         if (strcmp(op, "==") == 0) return r->severity == val;
@@ -67,12 +66,10 @@ int match_condition(Report *r, const char *field, const char *op, const char *va
         if (strcmp(op, ">") == 0) return r->severity > val;
         if (strcmp(op, "<") == 0) return r->severity < val;
     }
-    // Compara category (string)
     else if (strcmp(field, "category") == 0) {
         if (strcmp(op, "==") == 0) return strcmp(r->category, value) == 0;
         if (strcmp(op, "!=") == 0) return strcmp(r->category, value) != 0;
     }
-    // Compara inspector (string)
     else if (strcmp(field, "inspector") == 0) {
         if (strcmp(op, "==") == 0) return strcmp(r->inspector, value) == 0;
         if (strcmp(op, "!=") == 0) return strcmp(r->inspector, value) != 0;
@@ -86,7 +83,6 @@ void log_action(const char* district, const char* role, const char* user, const 
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/logged_district", district);
 
-    // Verificam permisiunile daca fisierul exista deja
     struct stat st;
     if (stat(filepath, &st) == 0) {
         if (strcmp(role, "inspector") == 0) {
@@ -97,9 +93,9 @@ void log_action(const char* district, const char* role, const char* user, const 
         }
     }
 
-    int fd = open(filepath, O_WRONLY | O_CREAT | O_APPEND, 0644); // 644 = rw-r--r--
+    int fd = open(filepath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
-        chmod(filepath, 0644); // Fortam permisiunile
+        chmod(filepath, 0644);
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "%ld\t%s\t%s\t%s\n", time(NULL), user, role, action);
         write(fd, buffer, strlen(buffer));
@@ -126,7 +122,6 @@ void add_report(const char* role, const char* user, const char* district) {
     r.timestamp = time(NULL);
     strncpy(r.inspector, user, 31);
     
-    // Pentru faza 1, citim datele de la tastatura
     printf("X (lat): "); scanf("%f", &r.latitude);
     printf("Y (lon): "); scanf("%f", &r.longitude);
     printf("Category (road/lighting/flooding/other): "); scanf("%31s", r.category);
@@ -144,11 +139,9 @@ void add_report(const char* role, const char* user, const char* district) {
     symlink(filepath, symlink_name); 
 
     
-    // 1. Logam actiunea de baza (adaugarea raportului)
     log_action(district, role, user, "add");
     printf("[SUCCESS] Raport adaugat in %s!\n", filepath);
 
-    // 2. Incercam sa citim PID-ul monitorului
     int pid_fd = open(".monitor_pid", O_RDONLY);
     int monitor_notified = 0;
 
@@ -157,15 +150,13 @@ void add_report(const char* role, const char* user, const char* district) {
         if (read(pid_fd, pid_buf, sizeof(pid_buf) - 1) > 0) {
             pid_t monitor_pid = atoi(pid_buf);
             
-            // 3. Trimitem semnalul SIGUSR1
             if (kill(monitor_pid, SIGUSR1) == 0) {
-                monitor_notified = 1; // Succes!
+                monitor_notified = 1;
             }
         }
         close(pid_fd);
     }
 
-    // 4. Logam rezultatul notificarii (Cerinta obligatorie)
     if (monitor_notified) {
         log_action(district, "SYSTEM", "monitor_notified", "SUCCESS");
         printf("[INFO] Monitorul a fost notificat cu succes.\n");
@@ -269,7 +260,6 @@ void delete_report(const char* role, const char* district, int target_id) {
     int found = 0;
     off_t target_pos = -1;
 
-    //Cautam inregistrarea
     while (read(fd, &r, sizeof(Report)) > 0) {
         if (r.id == target_id) {
             found = 1;
@@ -285,7 +275,6 @@ void delete_report(const char* role, const char* district, int target_id) {
         return;
     }
 
-    //Shiftam restul fisierului peste inregistrarea stearsa
     off_t read_pos = target_pos + sizeof(Report);
     off_t write_pos = target_pos;
 
@@ -301,7 +290,6 @@ void delete_report(const char* role, const char* district, int target_id) {
         write_pos += sizeof(Report);
     }
 
-    //Trunchiem fisierul pentru a taia spatiul de la final
     ftruncate(fd, write_pos);
     close(fd);
 
@@ -384,6 +372,16 @@ void filter_reports(const char* district, int condition_count, char* conditions[
 }
 
 
+void handle_sigchild(int sig){
+    int saved_errno = errno;
+
+    while(waitpid(-1, NULL, WNOHANG) > 0){
+
+    }
+    errno = saved_errno;
+}
+
+
 //Functia de stergere a unui district
 void remove_district(const char* role, const char* district) {
     if (strcmp(role, "manager") != 0) {
@@ -399,6 +397,15 @@ void remove_district(const char* role, const char* district) {
         perror("Eroare la stergerea link-ului simbolic");
     }
 
+    struct sigaction sa;
+    sa.sa_handler = handle_sigchild;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+
+    if(sigaction(SIGCHLD, &sa, NULL) == -1){
+        perror("Eroare la sigaction pentru SIGCHILD");
+    }
+
     pid_t pid = fork();
 
     if (pid < 0) {
@@ -407,38 +414,28 @@ void remove_district(const char* role, const char* district) {
     }
 
     if (pid == 0) { 
-        printf("Se executa rm -rf pentru %s...\n", district);
         execlp("rm", "rm", "-rf", district, NULL);
         
         perror("Eroare la execlp");
         exit(1);
     } else {
-        int status;
-        wait(&status);
-        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-            printf("Districtul %s a fost sters cu succes.\n", district);
-        } else {
-            printf("Procesul de stergere a esuat.\n");
-        }
+        printf("[INFO] Comanda de stergere pentru districtul '%s' a fost pornita in background.\n", district);
     }
 }
 
 
 // Functie pentru detectarea dangling links folosind lstat()
 void check_dangling_symlinks() {
-    DIR *d = opendir("."); // Deschidem folderul curent
+    DIR *d = opendir(".");
     struct dirent *dir;
     
     if (d) {
         while ((dir = readdir(d)) != NULL) {
-            // Cautam fisierele care incep cu "active_reports-"
             if (strncmp(dir->d_name, "active_reports-", 15) == 0) {
                 struct stat lst, st;
                 
-                // Folosim lstat pentru a vedea fisierul in sine (link-ul)
                 if (lstat(dir->d_name, &lst) == 0 && S_ISLNK(lst.st_mode)) {
                     
-                    // Folosim stat pentru a vedea daca fisierul la care pointeaza mai exista
                     if (stat(dir->d_name, &st) == -1) {
                         printf("[WARNING] Link-ul simbolic '%s' este invalid (dangling link)!\n", dir->d_name);
                     }
