@@ -20,6 +20,7 @@ void handle_signals(int signum) {
     }
 }
 
+
 int main() {
     int fd_check = open(".monitor_pid", O_RDONLY);
     if (fd_check >= 0) {

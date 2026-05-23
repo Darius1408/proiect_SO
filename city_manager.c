@@ -83,14 +83,8 @@ void log_action(const char* district, const char* role, const char* user, const 
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/logged_district", district);
 
-    struct stat st;
-    if (stat(filepath, &st) == 0) {
-        if (strcmp(role, "inspector") == 0) {
-            if (!(st.st_mode & S_IWGRP)) {
-                printf("[ERROR] Rolul 'inspector' nu are permisiunea de a scrie in %s!\n", filepath);
-                return; 
-            }
-        }
+    if (!check_role_access(role, filepath, S_IWUSR, S_IWGRP)) {
+        return;
     }
 
     int fd = open(filepath, O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -110,6 +104,10 @@ void add_report(const char* role, const char* user, const char* district) {
     
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "%s/reports.dat", district);
+
+    if (!check_role_access(role, filepath, S_IWUSR, S_IWGRP)) {
+        return; 
+    }
 
     int fd = open(filepath, O_WRONLY | O_CREAT | O_APPEND, 0664);
     if (fd < 0) { perror("Eroare deschidere fisier"); return; }
@@ -180,7 +178,12 @@ void list_reports(const char* role, const char* user, const char* district) {
 
     char perms[10];
     permissions_to_string(file_stat.st_mode, perms);
-    printf("Raport file: %s, Size: %lld bytes, Permissions: %s\n", filepath, file_stat.st_size, perms);
+
+    struct tm *tm_mod = localtime(&file_stat.st_mtime);
+    char time_buf[64];
+    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_mod);
+
+    printf("Raport file: %s, Size: %lld bytes, Mtime: %s, Permissions: %s\n", filepath, file_stat.st_size, time_buf, perms);
 
     int fd = open(filepath, O_RDONLY);
     if (fd < 0) return;
@@ -218,7 +221,6 @@ void view_report(const char* district, int target_id) {
             printf("Categorie: %s\n", r.category);
             printf("Severitate: %d\n", r.severity);
             
-            // Formatam timpul
             struct tm *tm_info = localtime(&r.timestamp);
             char time_buf[64];
             strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
@@ -299,7 +301,7 @@ void delete_report(const char* role, const char* district, int target_id) {
 }
 
 
-// Functiade update threshold
+// Functia de update threshold
 void update_threshold(const char* role, const char* district, int value) {
     if (strcmp(role, "manager") != 0) {
         printf("[ERROR] Doar rolul de manager poate modifica district.cfg.\n");
@@ -444,6 +446,26 @@ void check_dangling_symlinks() {
         }
         closedir(d);
     }
+}
+
+
+// Funcție unificată pentru verificarea permisiunilor cu stat()
+int check_role_access(const char* role, const char* filepath, mode_t manager_req, mode_t inspector_req) {
+    struct stat st;
+    if (stat(filepath, &st) == -1) return 1; 
+
+    if (strcmp(role, "manager") == 0) {
+        if (!(st.st_mode & manager_req)) {
+            printf("[SECURITY ERROR] Managerul nu are permisiunile necesare (%d) pe %s!\n", manager_req, filepath);
+            return 0;
+        }
+    } else if (strcmp(role, "inspector") == 0) {
+        if (!(st.st_mode & inspector_req)) {
+            printf("[SECURITY ERROR] Inspectorul nu are permisiunile necesare (%d) pe %s!\n", inspector_req, filepath);
+            return 0;
+        }
+    }
+    return 1;
 }
 
 
